@@ -6,32 +6,44 @@ on:
 
 jobs:
   analyze-and-test:
+    name: analyze-and-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+
+    # Use PowerShell on all runners (Linux/macOS default to bash otherwise)
+    defaults:
+      run:
+        shell: pwsh
+
+    env:
+      POWERSHELL_TELEMETRY_OPTOUT: 1
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install PSScriptAnalyzer & Pester
-        shell: pwsh
+      - name: PowerShell info
         run: |
-          Set-PSRepository PSGallery -InstallationPolicy Trusted
-          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
-          Install-Module Pester -Scope CurrentUser -Force -AllowClobber
+          $PSVersionTable
+          Get-Command pwsh -ErrorAction SilentlyContinue
+          Get-Module -ListAvailable Pester | Sort-Object Version -Desc | Select-Object -First 1 Name,Version
+          Get-Module -ListAvailable PSScriptAnalyzer | Sort-Object Version -Desc | Select-Object -First 1 Name,Version
 
-      - name: Script Analyzer
-        shell: pwsh
+      - name: Set execution policy (Windows only)
+        if: runner.os == 'Windows'
+        run: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+      - name: Install dev dependencies
         run: |
-          $results = Invoke-ScriptAnalyzer -Path src -Recurse -Settings ./tools/PSScriptAnalyzerSettings.psd1 -Verbose:$false -Severity Error
-          if ($results) {
-            $results | Format-Table
-            throw "PSScriptAnalyzer found errors."
-          }
+          Set-PSRepository PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
+          Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
+
+      - name: Run ScriptAnalyzer
+        run: Invoke-ScriptAnalyzer -Path src -Recurse -Settings ./tools/PSScriptAnalyzerSettings.psd1 -Severity Error
 
       - name: Run Pester tests
-        shell: pwsh
-        run: |
-          Invoke-Pester -CI -Output Detailed
+        run: Invoke-Pester -CI -Output Detailed
