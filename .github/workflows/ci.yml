@@ -1,34 +1,47 @@
-name: CI (smoke)
+name: CI (diagnostic-smoke)
 
 on:
   push:
     branches: [ main ]
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  pester:
+  win:
+    name: windows-smoke
     runs-on: windows-latest
     defaults:
       run:
         shell: pwsh
+        working-directory: ${{ github.workspace }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Use PowerShell 7.4
-        uses: actions/setup-powershell@v2
-        with:
-          pwsh-version: '7.4.x'
-
-      - name: Run Pester tests (auto-install if missing)
+      - name: Environment dump
         run: |
+          $PSVersionTable
+          Get-Location
+          Write-Host "Workspace: $env:GITHUB_WORKSPACE"
+          git --version
+          Get-ChildItem -Recurse -File | Select-Object -First 200 FullName | Format-Table -Auto
+
+      - name: Ensure TLS + PSGallery + Pester
+        run: |
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Set-PSRepository PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
           try {
             Import-Module Pester -MinimumVersion 5.0 -ErrorAction Stop
           } catch {
-            Write-Host "Pester not found. Installing..." 
-            Set-PSRepository PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
             Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck -ErrorAction Stop
             Import-Module Pester -MinimumVersion 5.0 -ErrorAction Stop
           }
-          Invoke-Pester -CI -Output Detailed
+
+      - name: Import PSAdminToolkit (debug)
+        run: |
+          Import-Module ./src/PSAdminToolkit/PSAdminToolkit.psd1 -Force -Verbose
+          Get-Command -Module PSAdminToolkit | Format-Table Name, CommandType
+
+      - name: Run Pester tests (explicit path)
+        run: Invoke-Pester -CI -Path tests/PSAdminToolkit.Tests.ps1 -Output Detailed
