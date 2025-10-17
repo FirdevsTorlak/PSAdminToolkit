@@ -1,0 +1,16 @@
+# PowerShell
+*.psd1
+*.psm1
+!src/**/PSAdminToolkit.psd1
+!src/**/PSAdminToolkit.psm1
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tests
+TestResults/
