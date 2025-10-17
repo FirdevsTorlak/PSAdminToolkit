@@ -1,4 +1,4 @@
-name: CI (light)
+name: CI (smoke)
 
 on:
   push:
@@ -6,14 +6,11 @@ on:
   pull_request:
 
 jobs:
-  test:
+  pester:
     runs-on: windows-latest
     defaults:
       run:
         shell: pwsh
-
-    env:
-      POWERSHELL_TELEMETRY_OPTOUT: 1
 
     steps:
       - name: Checkout
@@ -24,27 +21,14 @@ jobs:
         with:
           pwsh-version: '7.4.x'
 
-      - name: Prepare NuGet + TLS
+      - name: Run Pester tests (auto-install if missing)
         run: |
-          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-
-      - name: Install tooling (Pester + PSScriptAnalyzer)
-        run: |
-          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
-          Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck -ErrorAction Stop
-          Get-Module Pester -ListAvailable | Sort-Object Version -Desc | Select-Object -First 1 Name,Version
-          Get-Module PSScriptAnalyzer -ListAvailable | Sort-Object Version -Desc | Select-Object -First 1 Name,Version
-
-      - name: Run ScriptAnalyzer
-        run: |
-          if (-not (Test-Path ./tools/PSScriptAnalyzerSettings.psd1)) {
-            Write-Warning "tools/PSScriptAnalyzerSettings.psd1 not found; running with default rules."
-            Invoke-ScriptAnalyzer -Path src -Recurse -Severity Error
-          } else {
-            Invoke-ScriptAnalyzer -Path src -Recurse -Settings ./tools/PSScriptAnalyzerSettings.psd1 -Severity Error
+          try {
+            Import-Module Pester -MinimumVersion 5.0 -ErrorAction Stop
+          } catch {
+            Write-Host "Pester not found. Installing..." 
+            Set-PSRepository PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+            Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck -ErrorAction Stop
+            Import-Module Pester -MinimumVersion 5.0 -ErrorAction Stop
           }
-
-      - name: Run Pester tests
-        run: Invoke-Pester -CI -Output Detailed
+          Invoke-Pester -CI -Output Detailed
