@@ -11,22 +11,40 @@ jobs:
     defaults:
       run:
         shell: pwsh
+
     env:
       POWERSHELL_TELEMETRY_OPTOUT: 1
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Set execution policy
-        run: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+      - name: Use PowerShell 7.4
+        uses: actions/setup-powershell@v2
+        with:
+          pwsh-version: '7.4.x'
 
-      - name: Install tools
+      - name: Prepare NuGet + TLS
         run: |
-          Set-PSRepository PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
-          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
-          Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+
+      - name: Install tooling (Pester + PSScriptAnalyzer)
+        run: |
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber -ErrorAction Stop
+          Install-Module Pester -Scope CurrentUser -Force -SkipPublisherCheck -ErrorAction Stop
+          Get-Module Pester -ListAvailable | Sort-Object Version -Desc | Select-Object -First 1 Name,Version
+          Get-Module PSScriptAnalyzer -ListAvailable | Sort-Object Version -Desc | Select-Object -First 1 Name,Version
 
       - name: Run ScriptAnalyzer
-        run: Invoke-ScriptAnalyzer -Path src -Recurse -Settings ./tools/PSScriptAnalyzerSettings.psd1 -Severity Error
+        run: |
+          if (-not (Test-Path ./tools/PSScriptAnalyzerSettings.psd1)) {
+            Write-Warning "tools/PSScriptAnalyzerSettings.psd1 not found; running with default rules."
+            Invoke-ScriptAnalyzer -Path src -Recurse -Severity Error
+          } else {
+            Invoke-ScriptAnalyzer -Path src -Recurse -Settings ./tools/PSScriptAnalyzerSettings.psd1 -Severity Error
+          }
 
       - name: Run Pester tests
         run: Invoke-Pester -CI -Output Detailed
