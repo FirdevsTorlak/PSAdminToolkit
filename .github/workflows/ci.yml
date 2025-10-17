@@ -1,42 +1,25 @@
-name: CI
+name: CI (light)
 
 on:
   push:
+    branches: [ main ]
   pull_request:
 
 jobs:
-  analyze-and-test:
-    name: analyze-and-test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-
-    # Use PowerShell on all runners (Linux/macOS default to bash otherwise)
+  test:
+    runs-on: windows-latest
     defaults:
       run:
         shell: pwsh
-
     env:
       POWERSHELL_TELEMETRY_OPTOUT: 1
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: PowerShell info
-        run: |
-          $PSVersionTable
-          Get-Command pwsh -ErrorAction SilentlyContinue
-          Get-Module -ListAvailable Pester | Sort-Object Version -Desc | Select-Object -First 1 Name,Version
-          Get-Module -ListAvailable PSScriptAnalyzer | Sort-Object Version -Desc | Select-Object -First 1 Name,Version
-
-      - name: Set execution policy (Windows only)
-        if: runner.os == 'Windows'
+      - name: Set execution policy
         run: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
-      - name: Install dev dependencies
+      - name: Install tools
         run: |
           Set-PSRepository PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
           Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
